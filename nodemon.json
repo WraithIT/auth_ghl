@@ -1,0 +1,6 @@
+{
+    "ignore": ["*.test.js", "node_modules/", "public/", "tokens/"],
+    "watch": ["src/"],
+    "ext": "js,json"
+  }
+  
