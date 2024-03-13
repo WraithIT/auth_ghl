@@ -1,25 +1,35 @@
 const fs = require("fs").promises;
 const path = require("path");
-const integrationPath = path.join(__dirname, "../tokens/integration/clients.json");
-const fatturazionePath = path.join(__dirname, "../tokens/fatturazione/clients.json");
+const integrationPath = path.join(
+  __dirname,
+  "../tokens/integration/clients.json"
+);
+const fatturazionePath = path.join(
+  __dirname,
+  "../tokens/fatturazione/clients.json"
+);
 const jwt = require("jsonwebtoken");
 const qs = require("qs");
 const appConfig = require("../config.json");
 const axios = require("axios");
 const chokidar = require("chokidar");
 const schedule = require("node-schedule");
-const {formatDate} = require("../utils/formatter.js")
+const { formatDate } = require("../utils/formatter.js");
 
 let tokenData = null;
 
 async function setToken(newTokenData, appType) {
   try {
-    const filePath = appType === "integration" ? integrationPath : fatturazionePath;
+    const filePath =
+      appType === "integration" ? integrationPath : fatturazionePath;
     const tokens = await getToken(filePath);
     const index = await getIndex(newTokenData.locationId, appType);
     const name = await getClientName(newTokenData.locationId, appType);
-    const displayName = appType === "integration" && name ? name: `ID: ${newTokenData.locationId}`;
-    newTokenData.name = name
+    const displayName =
+      appType === "integration" && name
+        ? name
+        : `LocationID: ${newTokenData.locationId}`;
+    newTokenData.name = name;
     if (index !== -1) {
       tokens[index] = { ...tokens[index], ...newTokenData };
       console.log(`${displayName} - Token aggiornato in ${appType}.`);
@@ -29,7 +39,10 @@ async function setToken(newTokenData, appType) {
     }
     await fs.writeFile(filePath, JSON.stringify(tokens, null, 2), "utf8");
   } catch (error) {
-    console.error(`Errore durante l'aggiornamento del token in ${appType}:`, error);
+    console.error(
+      `Errore durante l'aggiornamento del token in ${appType}:`,
+      error
+    );
   }
 }
 
@@ -45,7 +58,7 @@ async function getSpecificToken(fixedLocationId, app) {
 }
 
 async function getToken(app) {
-  const filePath = app === "integration" ? integrationPath : fatturazionePath
+  const filePath = app === "integration" ? integrationPath : fatturazionePath;
   try {
     const data = await fs.readFile(filePath, "utf8");
     const tokens = JSON.parse(data);
@@ -64,21 +77,21 @@ function resetTokens() {
 }
 
 async function getLocationId(locationId, app) {
-  const filePath = app === "integration" ? integrationPath : fatturazionePath
+  const filePath = app === "integration" ? integrationPath : fatturazionePath;
   const data = await fs.readFile(filePath, "utf8");
   const tokens = JSON.parse(data);
   return tokens.find((token) => token.locationId === locationId);
 }
 
 async function getIndex(locationId, app) {
-  const filePath = app === "integration" ? integrationPath : fatturazionePath
+  const filePath = app === "integration" ? integrationPath : fatturazionePath;
   const data = await fs.readFile(filePath, "utf8");
   const clients = JSON.parse(data);
   return clients.findIndex((client) => client.locationId === locationId);
 }
 
 async function getClientName(locationId, app) {
-  const filePath = app === "integration" ? integrationPath : fatturazionePath
+  const filePath = app === "integration" ? integrationPath : fatturazionePath;
   const data = await fs.readFile(filePath, "utf8");
   const clients = JSON.parse(data);
   const client = clients.find((client) => client.locationId === locationId);
@@ -93,13 +106,20 @@ async function updateClientIntegration(tokenData) {
     const name = await getClientName(tokenData.locationId, "integration");
     if (clientIndex !== -1) {
       clients[clientIndex] = { ...clients[clientIndex], ...tokenData };
-      await fs.writeFile(integrationPath, JSON.stringify(clients, null, 2), "utf8");
+      await fs.writeFile(
+        integrationPath,
+        JSON.stringify(clients, null, 2),
+        "utf8"
+      );
       console.log(`Fatturazione - ${name} - Token disponibile`);
     } else {
       console.log(`Fatturazione - ${name} - Token non trovato.`);
     }
   } catch (error) {
-    console.error("Fatturazione - Errore durante l'aggiornamento del token:", error);
+    console.error(
+      "Fatturazione - Errore durante l'aggiornamento del token:",
+      error
+    );
   }
 }
 
@@ -110,14 +130,25 @@ async function updateClientFatturazione(tokenData) {
     const clientIndex = await getIndex(tokenData.locationId, "integration");
     if (clientIndex !== -1) {
       clients[clientIndex] = { ...clients[clientIndex], ...tokenData };
-      console.log(`Integration - Token per ${tokenData.locationId} aggiunto in fatturazione.`);
+      console.log(
+        `Integration - Token per ${tokenData.locationId} aggiunto in fatturazione.`
+      );
     } else {
       clients.push(tokenData);
-      console.log(`Integration - Nuovo token per ${tokenData.locationId} inserito in fatturazione.`);
+      console.log(
+        `Integration - Nuovo token per ${tokenData.locationId} inserito in fatturazione.`
+      );
     }
-    await fs.writeFile(fatturazionePath, JSON.stringify(clients, null, 2), "utf8");
+    await fs.writeFile(
+      fatturazionePath,
+      JSON.stringify(clients, null, 2),
+      "utf8"
+    );
   } catch (error) {
-    console.error("Integration - Errore durante l'aggiornamento/inserimento del token in fatturazione:", error);
+    console.error(
+      "Integration - Errore durante l'aggiornamento/inserimento del token in fatturazione:",
+      error
+    );
   }
 }
 
@@ -142,20 +173,29 @@ async function checkAndRenewTokensForPath(filePath, appType) {
         if (now >= expiration) {
           await handleToken(locationId, displayName, appType);
         } else {
-          console.log(`${displayName} - Token valido, scadenza ${formatDate(expiresDate)}. Riprogrammato rinnovo automatico.`);
+          console.log(
+            `${displayName} - Token valido, scadenza ${formatDate(
+              expiresDate
+            )}. Riprogrammato rinnovo automatico.`
+          );
           schedule.scheduleJob(expiration, async () => {
             try {
               await handleToken(locationId, displayName, appType);
               console.log(`${displayName} - Token rinnovato con successo.`);
             } catch (error) {
-              console.error(`${displayName} - Errore durante il rinnovo del token programmato: ${error}`);
+              console.error(
+                `${displayName} - Errore durante il rinnovo del token programmato: ${error}`
+              );
             }
           });
         }
       }
     }
   } catch (error) {
-    console.error(`Errore durante il controllo dei token per ${appType}: ${filePath}`, error);
+    console.error(
+      `Errore durante il controllo dei token per ${appType}: ${filePath}`,
+      error
+    );
   }
 }
 
@@ -181,43 +221,51 @@ async function handleToken(fixedLocationId, name, appType) {
 
 async function removeLocation(fixedLocationId, app) {
   try {
-    const filePath = app === "integration" ? integrationPath : fatturazionePath
-    const data = await fs.readFile(filePath, "utf8");
-    const clients = JSON.parse(data);
-    let isModified = false;
+    const filePath = app === "integration" ? integrationPath : fatturazionePath;
+    const clients = await readJSONFile(filePath);
+    let modified = false;
 
-    const modifiedClients = clients.map((client) => {
-      if (
-        client.locationId === fixedLocationId &&
-        Object.keys(client).length > 2
-      ) {
-        isModified = true;
-        return {
-          locationId: client.locationId,
-          name: client.name,
-        };
+    if (app === "integration") {
+      const modifiedClients = clients.map((client) => {
+        if (
+          client.locationId === fixedLocationId &&
+          Object.keys(client).length > 2
+        ) {
+          modified = true;
+          return { locationId: client.locationId, name: client.name };
+        }
+        return client;
+      });
+
+      if (modified) {
+        await writeJSONFile(filePath, modifiedClients);
+        return `LocationID ${fixedLocationId} modificata con successo.`;
       }
-      return client;
-    });
-
-    if (isModified) {
-      await fs.writeFile(
-        filePath,
-        JSON.stringify(modifiedClients, null, 2),
-        "utf8"
+    } else if (app === "fatturazione") {
+      const filteredClients = clients.filter(
+        (client) => client.locationId !== fixedLocationId
       );
-      return `LocationID ${fixedLocationId} rimossa con successo.`;
-    } else {
-      return `LocationID ${fixedLocationId} già eliminata`;
+      if (filteredClients.length < clients.length) {
+        modified = true;
+        await writeJSONFile(filePath, filteredClients);
+        return `LocationID ${fixedLocationId} rimossa completamente.`;
+      }
+    }
+
+    if (!modified) {
+      return `LocationID ${fixedLocationId} non trovata.`;
     }
   } catch (error) {
-    return (
-      `Errore durante la rimozione della locationID ${fixedLocationId}:`, error
+    console.error(
+      `Errore durante la rimozione/modifica della locationID ${fixedLocationId}:`,
+      error
     );
+    return `Errore durante la rimozione/modifica della locationID ${fixedLocationId}.`;
   }
 }
+
 async function refreshToken(fixedLocationId, appType) {
-  const configForApp = appConfig.find(config => config.app === appType);
+  const configForApp = appConfig.find((config) => config.app === appType);
   if (!configForApp) {
     console.error(`Configurazione per ${appType} non trovata.`);
     return false;
@@ -265,12 +313,12 @@ async function refreshToken(fixedLocationId, appType) {
 
 chokidar.watch(integrationPath).on("change", (path) => {
   console.log(`Trigger file integration`);
-   checkAndRenewTokensForPath(integrationPath);
+  checkAndRenewTokensForPath(integrationPath);
 });
 
 chokidar.watch(fatturazionePath).on("change", (path) => {
   console.log(`Trigger file fatturazione`);
-   checkAndRenewTokensForPath(fatturazionePath);
+  checkAndRenewTokensForPath(fatturazionePath);
 });
 
 module.exports = {
@@ -286,5 +334,5 @@ module.exports = {
   handleToken,
   refreshToken,
   checkAndRenewTokens,
-  removeLocation
+  removeLocation,
 };
