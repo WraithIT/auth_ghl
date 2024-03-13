@@ -1,37 +1,41 @@
 const fs = require("fs").promises;
 const path = require("path");
-const clientsPath = path.join(__dirname, "../tokens/integration/clients.json");
+const integrationPath = path.join(__dirname, "../tokens/integration/clients.json");
+const fatturazionePath = path.join(__dirname, "../tokens/fatturazione/clients.json");
 const jwt = require("jsonwebtoken");
 const qs = require("qs");
 const appConfig = require("../config.json");
 const axios = require("axios");
 const chokidar = require("chokidar");
-const schedule = require('node-schedule');
+const schedule = require("node-schedule");
+const {formatDate} = require("../utils/formatter.js")
 
 let tokenData = null;
 
-async function setToken(newTokenData) {
+async function setToken(newTokenData, appType) {
   try {
-    const tokens = await getToken();
-    const index = tokens.findIndex(
-      (token) => token.locationId === newTokenData.locationId
-    );
-    const name = await getClientName(newTokenData.locationId);
+    const filePath = appType === "integration" ? integrationPath : fatturazionePath;
+    const tokens = await getToken(filePath);
+    const index = await getIndex(newTokenData.locationId, appType);
+    const name = await getClientName(newTokenData.locationId, appType);
+    const displayName = appType === "integration" && name ? name: `ID: ${newTokenData.locationId}`;
+    newTokenData.name = name
     if (index !== -1) {
       tokens[index] = { ...tokens[index], ...newTokenData };
-      await fs.writeFile(clientsPath, JSON.stringify(tokens, null, 2), "utf8");
-      console.log(`${name} - Token aggiornato`);
+      console.log(`${displayName} - Token aggiornato in ${appType}.`);
     } else {
-      console.log(`${name} - Token non trovato`);
+      await tokens.push(newTokenData);
+      console.log(`${displayName} - Nuovo token inserito in ${appType}.`);
     }
+    await fs.writeFile(filePath, JSON.stringify(tokens, null, 2), "utf8");
   } catch (error) {
-    console.error("Errore durante l'aggiornamento del token:", error);
+    console.error(`Errore durante l'aggiornamento del token in ${appType}:`, error);
   }
 }
 
-async function getSpecificToken(fixedLocationId) {
+async function getSpecificToken(fixedLocationId, app) {
   try {
-    const tokens = await getToken();
+    const tokens = await getToken(app);
     const token = tokens.find((token) => token.locationId === fixedLocationId);
     return token;
   } catch (error) {
@@ -40,9 +44,10 @@ async function getSpecificToken(fixedLocationId) {
   }
 }
 
-async function getToken() {
+async function getToken(app) {
+  const filePath = app === "integration" ? integrationPath : fatturazionePath
   try {
-    const data = await fs.readFile(clientsPath, "utf8");
+    const data = await fs.readFile(filePath, "utf8");
     const tokens = JSON.parse(data);
     return tokens;
   } catch (error) {
@@ -58,20 +63,23 @@ function resetTokens() {
   }));
 }
 
-async function getLocationId(locationId) {
-  const data = await fs.readFile(clientsPath, "utf8");
+async function getLocationId(locationId, app) {
+  const filePath = app === "integration" ? integrationPath : fatturazionePath
+  const data = await fs.readFile(filePath, "utf8");
   const tokens = JSON.parse(data);
   return tokens.find((token) => token.locationId === locationId);
 }
 
-async function getIndex(locationId) {
-  const data = await fs.readFile(clientsPath, "utf8");
+async function getIndex(locationId, app) {
+  const filePath = app === "integration" ? integrationPath : fatturazionePath
+  const data = await fs.readFile(filePath, "utf8");
   const clients = JSON.parse(data);
   return clients.findIndex((client) => client.locationId === locationId);
 }
 
-async function getClientName(locationId) {
-  const data = await fs.readFile(clientsPath, "utf8");
+async function getClientName(locationId, app) {
+  const filePath = app === "integration" ? integrationPath : fatturazionePath
+  const data = await fs.readFile(filePath, "utf8");
   const clients = JSON.parse(data);
   const client = clients.find((client) => client.locationId === locationId);
   return client ? client.name : null;
@@ -79,66 +87,84 @@ async function getClientName(locationId) {
 
 async function updateClientIntegration(tokenData) {
   try {
-    const data = await fs.readFile(clientsPath, "utf8");
+    const data = await fs.readFile(integrationPath, "utf8");
     const clients = JSON.parse(data);
-    const clientIndex = await getIndex(tokenData.locationId);
-    const name = await getClientName(tokenData.locationId);
-
+    const clientIndex = await getIndex(tokenData.locationId, "integration");
+    const name = await getClientName(tokenData.locationId, "integration");
     if (clientIndex !== -1) {
       clients[clientIndex] = { ...clients[clientIndex], ...tokenData };
-      await fs.writeFile(clientsPath, JSON.stringify(clients, null, 2), "utf8");
-      console.log(`${name} - Token disponibile`);
+      await fs.writeFile(integrationPath, JSON.stringify(clients, null, 2), "utf8");
+      console.log(`Fatturazione - ${name} - Token disponibile`);
     } else {
-      console.log(`${name} - Token non trovato.`);
+      console.log(`Fatturazione - ${name} - Token non trovato.`);
     }
   } catch (error) {
-    console.error("Errore durante l'aggiornamento del token:", error);
+    console.error("Fatturazione - Errore durante l'aggiornamento del token:", error);
+  }
+}
+
+async function updateClientFatturazione(tokenData) {
+  try {
+    const data = await fs.readFile(fatturazionePath, "utf8");
+    const clients = JSON.parse(data);
+    const clientIndex = await getIndex(tokenData.locationId, "integration");
+    if (clientIndex !== -1) {
+      clients[clientIndex] = { ...clients[clientIndex], ...tokenData };
+      console.log(`Integration - Token per ${tokenData.locationId} aggiunto in fatturazione.`);
+    } else {
+      clients.push(tokenData);
+      console.log(`Integration - Nuovo token per ${tokenData.locationId} inserito in fatturazione.`);
+    }
+    await fs.writeFile(fatturazionePath, JSON.stringify(clients, null, 2), "utf8");
+  } catch (error) {
+    console.error("Integration - Errore durante l'aggiornamento/inserimento del token in fatturazione:", error);
   }
 }
 
 async function checkAndRenewTokens() {
+  await checkAndRenewTokensForPath(integrationPath, "integration");
+  await checkAndRenewTokensForPath(fatturazionePath, "fatturazione");
+}
+
+async function checkAndRenewTokensForPath(filePath, appType) {
   try {
-    console.log("Check token scaduti...");
-    const data = await fs.readFile(clientsPath, "utf8");
+    console.log(`Check tokens per ${appType}`);
+    const data = await fs.readFile(filePath, "utf8");
     const clients = JSON.parse(data);
-    clients.forEach(async (client) => {
-      const { locationId, name, expiresDate } = client;
+
+    for (const client of clients) {
+      const { locationId, expiresDate } = client;
+      const displayName = client.name || `ID: ${locationId}`;
+
       if (expiresDate) {
         const now = new Date();
         const expiration = new Date(expiresDate);
         if (now >= expiration) {
-          console.log(`${name} - Token valido.`);
-          await handleToken(locationId, name);
+          await handleToken(locationId, displayName, appType);
         } else {
-          console.log(
-            `${name} - Token valido. Riprogrammato automatico rinnovo`
-          );
-          
-          schedule.scheduleJob(expiration, () => {
-            handleToken(locationId, name)
-              .then(() => {})
-              .catch((error) => {
-                console.log(
-                  `${name} - Errore durante il rinnovo del token programmato:`
-                );
-              });
+          console.log(`${displayName} - Token valido, scadenza ${formatDate(expiresDate)}. Riprogrammato rinnovo automatico.`);
+          schedule.scheduleJob(expiration, async () => {
+            try {
+              await handleToken(locationId, displayName, appType);
+              console.log(`${displayName} - Token rinnovato con successo.`);
+            } catch (error) {
+              console.error(`${displayName} - Errore durante il rinnovo del token programmato: ${error}`);
+            }
           });
         }
-      } else {
-        console.log(`${name} - Token non valido. Da rigenerare`);
       }
-    });
+    }
   } catch (error) {
-    console.error("Errore durante il controllo dei token:", error);
+    console.error(`Errore durante il controllo dei token per ${appType}: ${filePath}`, error);
   }
 }
 
-async function handleToken(fixedLocationId, name) {
+async function handleToken(fixedLocationId, name, appType) {
   try {
-    let tokenData = await getLocationId(fixedLocationId);
+    let tokenData = await getLocationId(fixedLocationId, appType);
     if (tokenData) {
       console.log(`${name} - Token scaduto, tentativo di refresh...`);
-      const refreshSuccess = await refreshToken(fixedLocationId);
+      const refreshSuccess = await refreshToken(fixedLocationId, appType);
       if (!refreshSuccess) {
         console.log(`${name} - Impossibile refreshare il token.`);
         return null;
@@ -153,16 +179,59 @@ async function handleToken(fixedLocationId, name) {
   }
 }
 
-async function refreshToken(fixedLocationId) {
-  const tokenData = await getSpecificToken(fixedLocationId);
+async function removeLocation(fixedLocationId, app) {
+  try {
+    const filePath = app === "integration" ? integrationPath : fatturazionePath
+    const data = await fs.readFile(filePath, "utf8");
+    const clients = JSON.parse(data);
+    let isModified = false;
+
+    const modifiedClients = clients.map((client) => {
+      if (
+        client.locationId === fixedLocationId &&
+        Object.keys(client).length > 2
+      ) {
+        isModified = true;
+        return {
+          locationId: client.locationId,
+          name: client.name,
+        };
+      }
+      return client;
+    });
+
+    if (isModified) {
+      await fs.writeFile(
+        filePath,
+        JSON.stringify(modifiedClients, null, 2),
+        "utf8"
+      );
+      return `LocationID ${fixedLocationId} rimossa con successo.`;
+    } else {
+      return `LocationID ${fixedLocationId} già eliminata`;
+    }
+  } catch (error) {
+    return (
+      `Errore durante la rimozione della locationID ${fixedLocationId}:`, error
+    );
+  }
+}
+async function refreshToken(fixedLocationId, appType) {
+  const configForApp = appConfig.find(config => config.app === appType);
+  if (!configForApp) {
+    console.error(`Configurazione per ${appType} non trovata.`);
+    return false;
+  }
+
+  const tokenData = await getSpecificToken(fixedLocationId, appType);
   if (!tokenData || !tokenData.refresh_token) {
     console.log("Token di refresh non disponibile.");
     return false;
   }
 
   const data = qs.stringify({
-    client_id: appConfig.clientId,
-    client_secret: appConfig.clientSecret,
+    client_id: configForApp.clientId,
+    client_secret: configForApp.clientSecret,
     grant_type: "refresh_token",
     refresh_token: tokenData.refresh_token,
   });
@@ -185,18 +254,23 @@ async function refreshToken(fixedLocationId) {
         ...response.data,
         refresh_token: response.data.refresh_token || tokenData.refresh_token,
       };
-      setToken(newTokenData);
+      await setToken(newTokenData, appType);
       return true;
     }
   } catch (error) {
-    console.error("Errore durante il refresh del token:", error);
+    console.error(`Errore durante il refresh del token per ${appType}:`, error);
     return false;
   }
 }
 
-chokidar.watch(clientsPath).on('change', (path) => {
-  console.log(`Trigger file aggiornato`);
-  checkAndRenewTokens();
+chokidar.watch(integrationPath).on("change", (path) => {
+  console.log(`Trigger file integration`);
+   checkAndRenewTokensForPath(integrationPath);
+});
+
+chokidar.watch(fatturazionePath).on("change", (path) => {
+  console.log(`Trigger file fatturazione`);
+   checkAndRenewTokensForPath(fatturazionePath);
 });
 
 module.exports = {
@@ -205,10 +279,12 @@ module.exports = {
   getSpecificToken,
   resetTokens,
   updateClientIntegration,
+  updateClientFatturazione,
   getIndex,
   getLocationId,
   getClientName,
   handleToken,
   refreshToken,
   checkAndRenewTokens,
+  removeLocation
 };

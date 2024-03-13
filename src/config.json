@@ -1,5 +1,33 @@
-{
+[
+  {
+    "app": "integration",
     "baseUrl": "https://marketplace.gohighlevel.com",
-    "clientId": "65c0b866277b293bd32c5c33-ls8skd23",
-    "clientSecret": "a985d65e-f853-4cde-94c8-c0ae7266ab74"
-}
+    "clientId": "65f02b5e3b84a6fc22b9b486-lto80b8t",
+    "clientSecret": "f346b58b-5330-4b9e-abdb-07c4fd4e296d",
+    "requestType": "code",
+    "scopes": [
+      "contacts.readonly",
+      "contacts.write",
+      "forms.write",
+      "locations.write",
+      "locations.readonly",
+      "locations/customValues.readonly",
+      "locations/customValues.write",
+      "locations/customFields.readonly",
+      "locations/customFields.write",
+      "locations/tasks.readonly",
+      "locations/tasks.write",
+      "locations/tags.write",
+      "locations/tags.readonly",
+      "locations/templates.readonly"
+    ]
+  },
+  {
+    "app": "fatturazione",
+    "baseUrl": "https://marketplace.gohighlevel.com",
+    "clientId": "65ec63dddd55b10d63212c02-ltob53of",
+    "clientSecret": "49594441-eb13-456c-ab53-f157860eef06",
+    "requestType": "code",
+    "scopes": ["contacts.readonly"]
+  }
+]

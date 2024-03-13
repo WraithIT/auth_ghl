@@ -1,12 +1,11 @@
 const axios = require("axios");
 const qs = require("qs");
 const tokenManager = require("./tokenManager");
-const appConfig = require("../config.json");
 const jwt = require("jsonwebtoken");
 
 module.exports = async (req, res) => {
-  const code = req.query.code;
-  if (!code) {
+  const appConfig = req.appConfig;
+  if (!req.query.code) {
     return res.status(400).send("Codice di autorizzazione mancante.");
   }
 
@@ -16,7 +15,7 @@ module.exports = async (req, res) => {
     grant_type: "authorization_code",
     code: req.query.code,
     user_type: "Location",
-    redirect_uri: process.env.callBackUrl + "/oauth/callback",
+    redirect_uri: process.env.callBackUrl + `/${appConfig.app}/oauth/callback`,
   });
 
   const config = {
@@ -37,8 +36,10 @@ module.exports = async (req, res) => {
     tokenResponse.data.expiresDate = new Date(
       expAtTimestamp * 1000
     ).toISOString();
-    tokenManager.updateClientIntegration(tokenResponse.data);
-    res.redirect("/token-integration");
+    appConfig.app === "integration"
+      ? await tokenManager.updateClientIntegration(tokenResponse.data)
+      : await tokenManager.updateClientFatturazione(tokenResponse.data);
+    res.redirect(`/${appConfig.app}/tokens`);
   } catch (error) {
     console.error("Errore durante il recupero del token:", error);
     res.status(500).send("Errore durante il recupero del token.");

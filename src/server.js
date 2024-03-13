@@ -1,31 +1,38 @@
 const express = require("express");
 const app = express();
 const port = process.env.PORT || 3000;
-const tokenManager = require("./auth/tokenManager");
 const dotenv = require("dotenv");
+const tokenManager = require("./auth/tokenManager");
+const { formatDate } = require("./utils/formatter.js");
+
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
-app.get("/initiate", require("./auth/initiate"));
-app.get("/oauth/callback", require("./auth/callback"));
+const appConfig = require("./config.json");
 
-app.get("/token-integration", async (req, res) => {
-  const tokenData = await tokenManager.getToken();
-  if (tokenData) {
-    res.json(tokenData);
-  } else {
-    res.redirect("/initiate");
-  }
-});
+const integration = require("./routers/integration");
+const fatturazione = require("./routers/fatturazione");
 
-app.get("/reset-integration", (req, res) => {
-  tokenManager.resetTokens();
-  res.send("Tokens integration resettati. Reinizzializzali tramite /initiate");
+const integrationConfig = appConfig.find(
+  (config) => config.app === "integration"
+);
+const fatturazioneConfig = appConfig.find(
+  (config) => config.app === "fatturazione"
+);
+
+const integrationRouter = integration(integrationConfig);
+const fatturazioneRouter = fatturazione(fatturazioneConfig);
+
+app.use("/integration", integrationRouter);
+app.use("/fatturazione", fatturazioneRouter);
+
+app.use((error, req, res, next) => {
+  console.error(error);
+  res.status(500).send(`Si è verificato un errore: ${error.message}`);
 });
 
 app.listen(port, () => {
-  const now = new Date();
-  const timestamp = now.toISOString();
-  console.log(`Auth System generazione tokens - ${timestamp}`);
-  tokenManager.checkAndRenewTokens()
+  console.log(
+    `Auth System generazione tokens - ${formatDate(new Date().toISOString())}`
+  );
+  tokenManager.checkAndRenewTokens();
 });
-
