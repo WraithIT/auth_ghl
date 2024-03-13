@@ -313,12 +313,12 @@ async function refreshToken(fixedLocationId, appType) {
 
 chokidar.watch(integrationPath).on("change", (path) => {
   console.log(`Trigger file integration`);
-  checkAndRenewTokensForPath(integrationPath);
+  checkAndRenewTokensForPath(integrationPath, "integration");
 });
 
 chokidar.watch(fatturazionePath).on("change", (path) => {
   console.log(`Trigger file fatturazione`);
-  checkAndRenewTokensForPath(fatturazionePath);
+  checkAndRenewTokensForPath(fatturazionePath, "fatturazione");
 });
 
 module.exports = {
