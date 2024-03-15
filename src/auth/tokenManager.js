@@ -15,6 +15,7 @@ const axios = require("axios");
 const chokidar = require("chokidar");
 const schedule = require("node-schedule");
 const { formatDate } = require("../utils/formatter.js");
+const exp = require("constants");
 
 let tokenData = null;
 
@@ -111,13 +112,13 @@ async function updateClientIntegration(tokenData) {
         JSON.stringify(clients, null, 2),
         "utf8"
       );
-      console.log(`Fatturazione - ${name} - Token disponibile`);
+      console.log(`Integration - ${name} - Token disponibile`);
     } else {
-      console.log(`Fatturazione - ${name} - Token non trovato.`);
+      console.log(`Integration - ${name} - Token non trovato.`);
     }
   } catch (error) {
     console.error(
-      "Fatturazione - Errore durante l'aggiornamento del token:",
+      "Integration - Errore durante l'aggiornamento del token:",
       error
     );
   }
@@ -131,12 +132,12 @@ async function updateClientFatturazione(tokenData) {
     if (clientIndex !== -1) {
       clients[clientIndex] = { ...clients[clientIndex], ...tokenData };
       console.log(
-        `Integration - Token per ${tokenData.locationId} aggiunto in fatturazione.`
+        `Fatturazione - Token per ${tokenData.locationId} aggiunto in fatturazione.`
       );
     } else {
       clients.push(tokenData);
       console.log(
-        `Integration - Nuovo token per ${tokenData.locationId} inserito in fatturazione.`
+        `Fatturazione - Nuovo token per ${tokenData.locationId} inserito in fatturazione.`
       );
     }
     await fs.writeFile(
@@ -146,7 +147,7 @@ async function updateClientFatturazione(tokenData) {
     );
   } catch (error) {
     console.error(
-      "Integration - Errore durante l'aggiornamento/inserimento del token in fatturazione:",
+      "Fatturazione - Errore durante l'aggiornamento/inserimento del token in fatturazione:",
       error
     );
   }
@@ -157,47 +158,62 @@ async function checkAndRenewTokens() {
   await checkAndRenewTokensForPath(fatturazionePath, "fatturazione");
 }
 
-async function checkAndRenewTokensForPath(filePath, appType) {
+async function _handleExp(locationId, displayName, appType) {
+  console.log(`Rinnovo token per ${displayName} (${appType})`);
+  const newExpiration = new Date(Date.now() + 86400 * 1000);
+  return newExpiration.toISOString();
+}
+
+async function updateClientData(filePath, clients) {
   try {
-    console.log(`Check tokens per ${appType}`);
-    const data = await fs.readFile(filePath, "utf8");
-    const clients = JSON.parse(data);
-
-    for (const client of clients) {
-      const { locationId, expiresDate } = client;
-      const displayName = client.name || `ID: ${locationId}`;
-
-      if (expiresDate) {
-        const now = new Date();
-        const expiration = new Date(expiresDate);
-        if (now >= expiration) {
-          await handleToken(locationId, displayName, appType);
-        } else {
-          console.log(
-            `${displayName} - Token valido, scadenza ${formatDate(
-              expiresDate
-            )}. Riprogrammato rinnovo automatico.`
-          );
-          schedule.scheduleJob(expiration, async () => {
-            try {
-              await handleToken(locationId, displayName, appType);
-              console.log(`${displayName} - Token rinnovato con successo.`);
-            } catch (error) {
-              console.error(
-                `${displayName} - Errore durante il rinnovo del token programmato: ${error}`
-              );
-            }
-          });
-        }
-      }
-    }
+    await fs.writeFile(filePath, JSON.stringify(clients, null, 2), "utf8");
   } catch (error) {
     console.error(
-      `Errore durante il controllo dei token per ${appType}: ${filePath}`,
+      `Errore durante l'aggiornamento dei clienti in ${filePath}`,
       error
     );
   }
 }
+
+async function checkAndRenewTokensForPath(filePath, appType) {
+  try {
+    console.log(`Check tokens per ${appType}`);
+    const data = await fs.readFile(filePath, "utf8");
+    let clients = JSON.parse(data);
+    if (!Array.isArray(clients) || clients.length === 0) {
+      console.log("Nessun token da controllare.");
+      return;
+    }
+    for (const client of clients) {
+      const { locationId, expiresDate } = client;
+      if (!expiresDate) continue; 
+      const displayName = client.name || `ID: ${locationId}`;
+      const expiration = new Date(expiresDate);
+      const scheduleRenewal = async () => {
+        console.log(`Schedulazione rinnovo per ${displayName}.`);
+        try {
+          const newExpiresDateISO = await _handleExp(locationId, displayName, appType);
+          client.expiresDate = newExpiresDateISO;
+          await updateClientData(filePath, clients);
+          const newExpiresDate = new Date(newExpiresDateISO);
+          schedule.scheduleJob(newExpiresDate, scheduleRenewal);
+        } catch (error) {
+          console.error(`${displayName} - Errore durante il rinnovo del token programmato: ${error}`);
+        }
+      };
+      
+      if (new Date() >= expiration) {
+        await scheduleRenewal();
+      } else {
+        console.log(`${displayName} - Token valido, scadenza ${expiration}. Riprogrammato rinnovo automatico.`);
+        schedule.scheduleJob(expiration, scheduleRenewal);
+      }
+    }
+  } catch (error) {
+    console.error(`Errore durante il controllo dei token per ${appType}: ${filePath}`, error);
+  }
+}
+
 
 async function handleToken(fixedLocationId, name, appType) {
   try {
@@ -312,14 +328,15 @@ async function refreshToken(fixedLocationId, appType) {
 }
 
 chokidar.watch(integrationPath).on("change", (path) => {
-  console.log(`Trigger file integration`);
-  checkAndRenewTokensForPath(integrationPath, "integration");
+    console.log(`Trigger file integration`);
+    checkAndRenewTokensForPath(integrationPath, "integration");
 });
 
 chokidar.watch(fatturazionePath).on("change", (path) => {
-  console.log(`Trigger file fatturazione`);
-  checkAndRenewTokensForPath(fatturazionePath, "fatturazione");
+    console.log(`Trigger file fatturazione`);
+    checkAndRenewTokensForPath(fatturazionePath, "fatturazione");
 });
+
 
 module.exports = {
   setToken,
